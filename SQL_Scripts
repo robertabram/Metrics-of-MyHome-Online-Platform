@@ -1,0 +1,91 @@
+<--Cumulative Net Promoter Score (Last 12 months)-->
+DECLARE @END_DATE date = eomonth(dateadd(month,-1,getdate()-1)), @START_DATE date = datefromparts(year(getdate()-1)-1,month(getdate()-1),1);
+
+with cat as (
+select eomonth(CREATED_DATE) MONTH_CREATED
+		, sum(case when RATING_OF_RECOMMENDATION >= 9 then 1 else 0 end) as 'Promoters'
+		, sum(case when RATING_OF_RECOMMENDATION <= 6  then 1 else 0 end) as 'Detractors'
+		, count(*) TotalRatings
+from SURVEYS
+where RATING_OF_RECOMMENDATION IS NOT NULL and cast(CREATED_DATE as date) <= @END_DATE
+group by eomonth(CREATED_DATE)
+) ,
+cat_cum as(
+select *
+		, sum(Promoters) over(order by MONTH_CREATED rows between 11 preceding and current row)  as CumPromoters
+		, sum(Detractors) over(order by MONTH_CREATED rows between 11 preceding and current row) as CumDetractors
+		, sum(TotalRatings) over(order by MONTH_CREATED rows between 11 preceding and current row) CumTotal
+from cat
+
+)
+
+
+select *  
+		, cast((CumPromoters - CumDetractors) as decimal) / CumTotal NPS
+from cat_cum
+where MONTH_CREATED >= @START_DATE
+
+
+<--Monthly Net Promoter Score (Last 12 months)-->
+DECLARE @END_DATE date = eomonth(dateadd(month,-1,getdate()-1)), @START_DATE date = datefromparts(year(getdate()-1)-1,month(getdate()-1),1);
+
+with cat as (
+select eomonth(CREATED_DATE) MONTH_CREATED
+		, case when RATING_OF_RECOMMENDATION >= 9 then 1 else 0 end as 'Promoters'
+		, case when RATING_OF_RECOMMENDATION <= 6 then 1 else 0 end as 'Detractors'
+from SURVEYS
+where RATING_OF_RECOMMENDATION IS NOT NULL and cast(CREATED_DATE as date) between @START_DATE and @END_DATE
+),
+grp_cat as (
+select MONTH_CREATED
+		, SUM(Promoters) Promoters_Num
+		, SUM(Detractors) Detractors_Num
+		, count(*) Total
+from cat
+group by MONTH_CREATED)
+
+
+select *
+		, cast((Promoters_Num - Detractors_Num) as decimal) / Total NPS_Monthly
+from grp_cat
+
+
+<--Cumulative Customer Experience Index (Last 12 months)-->
+DECLARE @END_DATE date = eomonth(dateadd(month,-1,getdate()-1)), @START_DATE date = datefromparts(year(getdate()-1)-1,month(getdate()-1),1);
+
+with mon_cei as (
+select eomonth(CREATED_DATE) MONTH_CREATED
+		, count(USER_ID) NUMB_OF_RESP
+		, convert(decimal(10,2),avg(cast(RATING_OF_EXPERIENCE as decimal))) AVG_RATING
+from SURVEYS
+where RATING_OF_EXPERIENCE IS NOT NULL and cast(CREATED_DATE as date) <= @END_DATE
+group by eomonth(CREATED_DATE) 
+),
+cum_cei as (
+select *
+		, sum(NUMB_OF_RESP * AVG_RATING) over(order by MONTH_CREATED rows between 11 preceding and current row) WEIGHT
+		, sum(NUMB_OF_RESP) over(order by MONTH_CREATED rows between 11 preceding and current row) CUM_RESP
+from mon_cei
+)
+
+select *
+		, WEIGHT / CUM_RESP CEI
+from cum_cei
+where MONTH_CREATED >= @START_DATE
+
+
+<--Monthly Customer Experience Index (Last 12 months)-->
+DECLARE @END_DATE date = eomonth(dateadd(month,-1,getdate()-1)), @START_DATE date = datefromparts(year(getdate()-1)-1,month(getdate()-1),1);
+
+with mon_cei as (
+select eomonth(CREATED_DATE) MONTH_CREATED
+		, count(USER_ID) NUMB_OF_RESP
+		, convert(decimal(10,2),avg(cast(RATING_OF_EXPERIENCE as decimal))) AVG_RATING
+from SURVEYS
+where RATING_OF_EXPERIENCE IS NOT NULL and cast(CREATED_DATE as date) between @START_DATE and @END_DATE
+group by eomonth(CREATED_DATE) 
+)
+
+select *
+		, convert(decimal(10,2),cast((NUMB_OF_RESP * AVG_RATING) as decimal) / NUMB_OF_RESP) CEI_monthly
+from mon_cei
